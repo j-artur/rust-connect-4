@@ -10,13 +10,13 @@ fn main() {
     let mut game = Game::new(width, height);
     let mut token = Token::Green;
 
-    println!("\n{game}");
+    println!("\n{}", game);
 
     let get_input = |token: Token| {
         let mut num: isize = -1;
 
         while num == -1 {
-            print!("Play as {token} at column: ");
+            print!("Play as {} at column: ", token);
             std::io::stdout().flush().unwrap();
 
             let mut input = String::new();
@@ -25,7 +25,7 @@ fn main() {
 
             match input.parse() {
                 Ok(n) => num = n,
-                Err(_) => println!("Invalid input {input} (try between 0 and {})", width - 1),
+                Err(_) => println!("Invalid input {} (try between 0 and {})", input, width - 1),
             }
         }
 
@@ -33,27 +33,21 @@ fn main() {
     };
 
     loop {
-        let col = get_input(token);
+        let x = get_input(token);
 
-        match game.play(token, col) {
-            Ok(state) => match state {
-                game::GameState::Playing => {
-                    println!("\n{game}");
-                    token.toggle();
+        match game.play(token, x) {
+            Ok(state) => {
+                println!("\n{}", game);
+                match state {
+                    game::GameState::Playing => token.toggle(),
+                    game::GameState::Won(token) => break println!("{} won!", token),
+                    game::GameState::Draw => break println!("It's a draw!"),
                 }
-                game::GameState::Won(token) => {
-                    println!("\n{game}");
-                    break println!("{token} won!");
-                }
-                game::GameState::Draw => {
-                    println!("\n{game}");
-                    break println!("It's a draw!");
-                }
-            },
+            }
             Err(err) => match err {
                 GameErr::InvalidState => println!("Game is on invalid state"),
-                GameErr::InvalidCol => println!("Column {col} doesn't exist!"),
-                GameErr::FullCol => println!("Column {col} is full!"),
+                GameErr::InvalidCol => println!("Column {} doesn't exist!", x),
+                GameErr::FullCol => println!("Column {} is full!", x),
             },
         }
     }

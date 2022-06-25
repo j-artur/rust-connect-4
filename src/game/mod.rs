@@ -37,24 +37,8 @@ pub struct Game {
     grid: Vec<Vec<Token>>,
 }
 
-fn min_len_4<T>(a: &Vec<T>, b: &Vec<T>, c: &Vec<T>, d: &Vec<T>) -> usize {
-    a.len().min(b.len()).min(c.len()).min(d.len())
-}
-
 fn check_4(a: &Token, b: &Token, c: &Token, d: &Token) -> Option<Token> {
     (a == b && b == c && c == d).then(|| a.to_owned())
-}
-
-fn check_4_option(
-    a: Option<&Token>,
-    b: Option<&Token>,
-    c: Option<&Token>,
-    d: Option<&Token>,
-) -> Option<Token> {
-    match (a, b, c, d) {
-        (Some(a), Some(b), Some(c), Some(d)) => check_4(a, b, c, d),
-        _ => None,
-    }
 }
 
 impl Game {
@@ -67,59 +51,15 @@ impl Game {
         }
     }
 
-    fn check_vertical(&self) -> Option<Token> {
-        self.grid
-            .iter()
-            .filter(|col| col.len() >= 4)
-            .find_map(|col| {
-                let it = || col.iter();
-
-                zip4(it(), it().skip(1), it().skip(2), it().skip(3))
-                    .find_map(|(t0, t1, t2, t3)| check_4(t0, t1, t2, t3))
-            })
-    }
-
-    fn check_horizontal(&self) -> Option<Token> {
-        let it = || self.grid.iter();
-
-        zip4(it(), it().skip(1), it().skip(2), it().skip(3)).find_map(|(c0, c1, c2, c3)| {
-            (0..min_len_4(c0, c1, c2, c3))
-                .find_map(|i| check_4_option(c0.get(i), c1.get(i), c2.get(i), c3.get(i)))
-        })
-    }
-
-    fn check_diagonal(&self) -> Option<Token> {
-        let it = || self.grid.iter();
-
-        zip4(it(), it().skip(1), it().skip(2), it().skip(3)).find_map(|(c0, c1, c2, c3)| {
-            let left_to_right = c0.len() >= 1 && c1.len() >= 2 && c2.len() >= 3 && c3.len() >= 4;
-            let right_to_left = c0.len() >= 4 && c1.len() >= 3 && c2.len() >= 2 && c3.len() >= 1;
-
-            let len = min_len_4(c0, c1, c2, c3);
-
-            (0..len).find_map(|i| match (left_to_right, right_to_left) {
-                (true, _) => check_4_option(c0.get(i), c1.get(i + 1), c2.get(i + 2), c3.get(i + 3)),
-                (_, true) => check_4_option(c0.get(i + 3), c1.get(i + 2), c2.get(i + 1), c3.get(i)),
-                _ => None,
-            })
-        })
-    }
-
-    pub fn play(&mut self, token: Token, col: usize) -> Result<GameState, GameErr> {
+    pub fn play(&mut self, token: Token, x: usize) -> Result<GameState, GameErr> {
         match self.state {
-            GameState::Playing => match self.grid.get_mut(col) {
+            GameState::Playing => match self.grid.get_mut(x) {
                 Some(vec) if vec.len() < self.height => {
+                    let y = vec.len();
                     vec.push(token);
 
                     if self.grid.iter().any(|vec| vec.len() < self.height) {
-                        match self
-                            .check_vertical()
-                            .or(self.check_horizontal())
-                            .or(self.check_diagonal())
-                        {
-                            Some(token) => Ok(GameState::Won(token)),
-                            None => Ok(GameState::Playing),
-                        }
+                        self.check_win(x, y)
                     } else {
                         Ok(GameState::Draw)
                     }
@@ -129,6 +69,62 @@ impl Game {
             },
             _ => Err(GameErr::InvalidState),
         }
+    }
+
+    fn check_win(&self, x: usize, y: usize) -> Result<GameState, GameErr> {
+        match self.win_ver(x).or(self.win_hor(y)).or(self.win_dia(x, y)) {
+            Some(token) => Ok(GameState::Won(token)),
+            None => Ok(GameState::Playing),
+        }
+    }
+
+    fn win_ver(&self, x: usize) -> Option<Token> {
+        self.grid.get(x).and_then(|col| match col.len() {
+            n if n < 4 => None,
+            n => check_4(
+                col.get(n - 1)?,
+                col.get(n - 2)?,
+                col.get(n - 3)?,
+                col.get(n - 4)?,
+            ),
+        })
+    }
+
+    fn win_hor(&self, y: usize) -> Option<Token> {
+        let it = || self.grid.iter();
+
+        zip4(it(), it().skip(1), it().skip(2), it().skip(3))
+            .find_map(|(c0, c1, c2, c3)| check_4(c0.get(y)?, c1.get(y)?, c2.get(y)?, c3.get(y)?))
+    }
+
+    fn win_dia(&self, x: usize, y: usize) -> Option<Token> {
+        [-3, -2, -1, 0].iter().find_map(|i| {
+            let y = (y as isize + i.to_owned()) as usize;
+
+            let left_to_right = || {
+                let x = (x as isize + *i) as usize;
+
+                check_4(
+                    self.grid.get(x)?.get(y)?,
+                    self.grid.get(x + 1)?.get(y + 1)?,
+                    self.grid.get(x + 2)?.get(y + 2)?,
+                    self.grid.get(x + 3)?.get(y + 3)?,
+                )
+            };
+
+            let right_to_left = || {
+                let x = (x as isize - *i) as usize;
+
+                check_4(
+                    self.grid.get(x)?.get(y)?,
+                    self.grid.get(x - 1)?.get(y + 1)?,
+                    self.grid.get(x - 2)?.get(y + 2)?,
+                    self.grid.get(x - 3)?.get(y + 3)?,
+                )
+            };
+
+            left_to_right().or(right_to_left())
+        })
     }
 }
 
@@ -154,7 +150,7 @@ impl Display for Game {
                     .get(j)
                     .and_then(|col| col.get(i))
                     .map_or("⚪".to_string(), |token| token.to_string());
-                write!(f, "{dot}")?;
+                write!(f, "{}", dot)?;
             }
             write!(f, "\n")?
         })
